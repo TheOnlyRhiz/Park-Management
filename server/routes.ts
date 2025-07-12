@@ -17,12 +17,15 @@ const JWT_SECRET = process.env.JWT_SECRET || "park-management-system-secret";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Setup session middleware
+  // Allow overriding cookie secure setting via env (for HTTP in production)
+  const sessionCookieSecure = process.env.SESSION_COOKIE_SECURE === "true";
+  console.log("Session cookie secure flag:", sessionCookieSecure);
   app.use(
     session({
       secret: JWT_SECRET,
       resave: false,
       saveUninitialized: false,
-      cookie: { secure: process.env.NODE_ENV === "production", maxAge: 24 * 60 * 60 * 1000 }, // 24 hours
+      cookie: { secure: sessionCookieSecure, maxAge: 24 * 60 * 60 * 1000 }, // 24 hours
       store: new MemoryStoreSession({
         checkPeriod: 86400000, // prune expired entries every 24h
       }),
@@ -51,7 +54,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const authMiddleware = async (req: Request, res: Response, next: Function) => {
     try {
       const token = (req.session as any).token;
-      
+      console.log("Auth middleware token:", token);
       if (!token) {
         return res.status(401).json({ message: "Unauthorized - No token provided" });
       }
@@ -87,6 +90,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: "24h" });
       (req.session as any).token = token;
+      console.log("Login token set in session:", token);
       
       return res.status(200).json({
         message: "Login successful",

@@ -1,6 +1,17 @@
+import dotenv from "dotenv";
+dotenv.config();
+
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
+import fs from "fs";
+import https from "https";
+import path from "path";
+import { fileURLToPath } from "url";
+import { dirname } from "path";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 const app = express();
 app.use(express.json());
@@ -8,7 +19,7 @@ app.use(express.urlencoded({ extended: false }));
 
 app.use((req, res, next) => {
   const start = Date.now();
-  const path = req.path;
+  const pathReq = req.path;
   let capturedJsonResponse: Record<string, any> | undefined = undefined;
 
   const originalResJson = res.json;
@@ -19,8 +30,8 @@ app.use((req, res, next) => {
 
   res.on("finish", () => {
     const duration = Date.now() - start;
-    if (path.startsWith("/api")) {
-      let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
+    if (pathReq.startsWith("/api")) {
+      let logLine = `${req.method} ${pathReq} ${res.statusCode} in ${duration}ms`;
       if (capturedJsonResponse) {
         logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
       }
@@ -64,11 +75,26 @@ import { storage } from "./storage";
   // this serves both the API and the client.
   // It is the only port that is not firewalled.
   const port = 5000;
-  server.listen({
-    port,
-    host: "0.0.0.0",
-    reusePort: true,
-  }, () => {
-    log(`serving on port ${port}`);
-  });
+
+  // Load SSL certificates for HTTPS
+  const keyPath = path.resolve(__dirname, "key.pem");
+  const certPath = path.resolve(__dirname, "cert.pem");
+
+  if (fs.existsSync(keyPath) && fs.existsSync(certPath)) {
+    const key = fs.readFileSync(keyPath, "utf8");
+    const cert = fs.readFileSync(certPath, "utf8");
+
+    https.createServer({ key, cert }, app).listen(port, "0.0.0.0", () => {
+      log(`serving HTTPS on port ${port}`);
+    });
+  } else {
+    // Fallback to HTTP if certs not found
+    server.listen({
+      port,
+      host: "0.0.0.0",
+      reusePort: true,
+    }, () => {
+      log(`serving HTTP on port ${port} (no SSL certificates found)`);
+    });
+  }
 })();
